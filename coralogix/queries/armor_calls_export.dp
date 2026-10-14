@@ -1,0 +1,22 @@
+source logs
+| filter $l.subsystemname == 'armor-api-service-java-backend'
+| filter $d.logger_name == 'com.birdeye.armor.filter.ArmorGlobalFilter'
+| filter $d.message:string.contains('[Status :: ')
+| filter $d.message:string.contains('x-business-number:"{{BUSINESS_NUMBER}}"') || $d.message:string.contains('{{KEY_PREFIX}}')
+| extract $d.message:string into $d.p using regexp(e=/R\.Id :: (?<requestId>\S+) \] R\.URI :: (?<uri>\S+) \[Status :: (?<status>\d+) \] type :: (?<method>\S+)/)
+| extract $d.message:string into $d.t using regexp(e=/Time took :: (?<ms>\d+)ms/)
+| extract $d.message:string into $d.c using regexp(e=/X-Forwarded-For:"(?<clientIp>[^"]*)"/)
+| create $d.api from splitParts($d.p.uri:string, '?', 1)
+| redact $d.api matching /\b[0-9]+\b/ to '*'
+| distinct formatTimestamp($m.timestamp, '%Y-%m-%d %H:%M:%S%.3f', 'UTC') as timestamp,
+           $l.applicationname as applicationName,
+           $d.api as api,
+           $d.p.requestId as armor_request_id,
+           $d.c.clientIp as client_ip,
+           $d.p.uri as full_uri,
+           $d.p.method as method,
+           $d.p.status as status,
+           $d.t.ms:number as time_ms,
+           $d.trace_id as trace_id
+| orderby timestamp asc
+| limit 10000
