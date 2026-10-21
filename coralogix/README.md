@@ -22,3 +22,15 @@ python coralogix/armor_export.py \
   prints the key. Needs `requests` and `openpyxl`.
 
 Tests (mocked API, no network): `python -m unittest discover -s coralogix/tests`
+
+## Armor: who is calling an account (source IPs)
+
+For "where is this API traffic coming from" questions (e.g. V2BIRD-37848). Replace
+`{{BUSINESS_NUMBER}}` and paste into Coralogix Explore (Archive tier, UTC range, <= 1 day per run
+to stay under the scan limit):
+
+- `queries/armor_account_sources.dp` - summary by client IP x key prefix x endpoint x status, with first/last seen.
+- `queries/armor_account_calls.dp` - one row per call (UTC + IST time, IP chain, key prefix, trace id). Any `api_key=` query value is masked; only 8-char key prefixes are ever extracted.
+
+Calls for child locations don't carry the parent's business number: once the summary shows the key
+prefix, re-run with `|| $d.message:string.contains('<KEY_PREFIX>')` added to the business-number filter.

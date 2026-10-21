@@ -1,0 +1,16 @@
+source logs
+| filter $l.subsystemname == 'armor-api-service-java-backend'
+| filter $d.logger_name == 'com.birdeye.armor.filter.ArmorGlobalFilter'
+| filter $d.message:string.contains('[Status :: ')
+| filter $d.message:string.contains('{{BUSINESS_NUMBER}}')
+| extract $d.message:string into $d.p using regexp(e=/R\.URI :: (?<uri>\S+) \[Status :: (?<status>\d+) \] type :: (?<method>\S+)/)
+| extract $d.message:string into $d.c using regexp(e=/X-Forwarded-For:"(?<clientIp>[^",\s]*)/)
+| extract $d.message:string into $d.k using regexp(e=/x-api-key:"(?<keyPrefix>[^"]{1,8})/)
+| extract $d.message:string into $d.a using regexp(e=/Authorization:"Bearer (?<bearerPrefix>[^"]{1,8})/)
+| create $d.api from splitParts($d.p.uri:string, '?', 1)
+| redact $d.api matching /\b[0-9]+\b/ to '*'
+| groupby $d.c.clientIp as client_ip, $d.k.keyPrefix as api_key_prefix, $d.a.bearerPrefix as scim_token_prefix, $d.p.method as method, $d.api as api, $d.p.status as status
+    aggregate count() as calls,
+              formatTimestamp(min($m.timestamp), '%Y-%m-%d %H:%M:%S', 'UTC') as first_seen_utc,
+              formatTimestamp(max($m.timestamp), '%Y-%m-%d %H:%M:%S', 'UTC') as last_seen_utc
+| orderby calls desc

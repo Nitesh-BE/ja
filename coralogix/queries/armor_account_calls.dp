@@ -1,0 +1,30 @@
+source logs
+| filter $l.subsystemname == 'armor-api-service-java-backend'
+| filter $d.logger_name == 'com.birdeye.armor.filter.ArmorGlobalFilter'
+| filter $d.message:string.contains('[Status :: ')
+| filter $d.message:string.contains('{{BUSINESS_NUMBER}}')
+| extract $d.message:string into $d.p using regexp(e=/R\.Id :: (?<requestId>\S+) \] R\.URI :: (?<uri>\S+) \[Status :: (?<status>\d+) \] type :: (?<method>\S+)/)
+| extract $d.message:string into $d.t using regexp(e=/Time took :: (?<ms>\d+)ms/)
+| extract $d.message:string into $d.c using regexp(e=/X-Forwarded-For:"(?<chain>[^"]*)"/)
+| extract $d.message:string into $d.f using regexp(e=/X-Forwarded-For:"(?<clientIp>[^",\s]*)/)
+| extract $d.message:string into $d.k using regexp(e=/x-api-key:"(?<keyPrefix>[^"]{1,8})/)
+| extract $d.message:string into $d.a using regexp(e=/Authorization:"Bearer (?<bearerPrefix>[^"]{1,8})/)
+| create $d.api from splitParts($d.p.uri:string, '?', 1)
+| redact $d.api matching /\b[0-9]+\b/ to '*'
+| create $d.safe_uri from $d.p.uri:string
+| redact $d.safe_uri matching /api_key=[^&]+/ to 'api_key=***'
+| distinct formatTimestamp($m.timestamp, '%Y-%m-%d %H:%M:%S%.3f', 'UTC') as timestamp_utc,
+           formatTimestamp($m.timestamp, '%Y-%m-%d %H:%M:%S%.3f', 'Asia/Kolkata') as timestamp_ist,
+           $d.f.clientIp as client_ip,
+           $d.c.chain as forwarded_for_chain,
+           $d.k.keyPrefix as api_key_prefix,
+           $d.a.bearerPrefix as scim_token_prefix,
+           $d.p.method as method,
+           $d.api as api,
+           $d.safe_uri as full_uri,
+           $d.p.status as status,
+           $d.t.ms:number as time_ms,
+           $d.p.requestId as armor_request_id,
+           $d.trace_id as trace_id
+| orderby timestamp_utc asc
+| limit 10000
